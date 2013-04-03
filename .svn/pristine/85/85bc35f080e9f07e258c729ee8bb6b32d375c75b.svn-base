@@ -1,0 +1,448 @@
+package yl.demo.pathHelper;
+
+import java.util.HashMap;
+import java.util.List;
+
+import yl.demo.pathHelper.Adapter.NearFacilityAdapter;
+import yl.demo.pathHelper.Receiver.WiFiReceiver;
+import yl.demo.pathHelper.Receiver.WiFiReceiver.OnWiFiDataGettedListener;
+import yl.demo.pathHelper.algrorithm.IndoorLocationAlgorithm;
+import yl.demo.pathHelper.algrorithm.MapConstraint;
+import yl.demo.pathHelper.algrorithm.SearchPathAlgorithm;
+import yl.demo.pathHelper.db.DBFacade;
+import yl.demo.pathHelper.db.DBManager;
+import yl.demo.pathHelper.db.model.Corner;
+import yl.demo.pathHelper.db.model.Facility;
+import yl.demo.pathHelper.db.model.Model;
+import yl.demo.pathHelper.model.Location;
+import yl.demo.pathHelper.util.LanguageAdapter;
+import yl.demo.pathHelper.view.DialogFactory;
+import yl.demo.pathHelper.view.MapView;
+import android.net.wifi.WifiManager;
+import android.os.Bundle;
+import android.os.Handler;
+import android.app.Activity;
+import android.app.Dialog;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.graphics.BitmapFactory;
+import android.graphics.PointF;
+import android.util.Log;
+import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.Window;
+import android.view.animation.Animation;
+import android.view.animation.Animation.AnimationListener;
+import android.view.animation.AnimationSet;
+import android.view.inputmethod.EditorInfo;
+import android.widget.AdapterView;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.ListView;
+import android.widget.TextView;
+import android.widget.Toast;
+import yl.demo.pathHelper.Animation.*;
+
+public class MainActivity extends Activity {
+	public static final int MSG_OUT_OF_BOUNDARY = 0;
+	public static final int MSG_UPDATE_LANGUAGE = 1;
+	public static final int MSG_NOT_FOUND_FACILITY = 2;
+	
+	public static final int REQUEST_FACILITY = 0;
+	public static final int REQUEST_LAYER = 1;
+	
+	private MapView mMapView;
+	private ImageView mZoomInButton;
+	private ImageView mZoomOutButton;
+	private ImageView mNavigationButton;
+	private ImageView mFacilitiesButton;
+	private ImageView mLayerOptionButton;
+	private ImageView mPositionOptionButton;
+	private ImageView mIndoorLocationButton;
+	private SearchPathAlgorithm mSearchAlgorithm;
+	private ListView mNearFacilityListView;
+	private IndoorLocationAlgorithm mIndoorLocationAlgorithm;
+	private Location mMyLocation;
+	private Location mTargetLocation;
+	private Context mContext;
+	private EditText mSearchEditText;
+	private Dialog mSelectDialog;
+	private LanguageAdapter mLanguageAdapter;
+	private WiFiReceiver mWiFiReceiver;
+	private WifiManager mWifiManager;
+	private boolean mIsListViewInScreen;
+	private NearFacilityAdapter mNearFacilityAdapter;
+	private int mAnimatonStartX;
+	
+	private Handler mHandler = new Handler() {
+		public void handleMessage(android.os.Message msg) {
+			switch (msg.what) {
+			case MSG_OUT_OF_BOUNDARY:
+				Toast.makeText(mContext, mLanguageAdapter.getIdWithLanguageAdaptation("string", "out_of_map_boundary"), Toast.LENGTH_SHORT).show();
+				break;
+			case MSG_UPDATE_LANGUAGE:
+				initLanguage();
+				break;
+			case MSG_NOT_FOUND_FACILITY:
+				Toast.makeText(mContext, mLanguageAdapter.getIdWithLanguageAdaptation("string", "not_found"), Toast.LENGTH_SHORT).show();
+				break;
+			default:
+				break;
+			}
+		};
+	};
+	
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		requestWindowFeature(Window.FEATURE_NO_TITLE);
+		setContentView(R.layout.activity_main);
+		mContext = this;
+		initComponents();
+		initViews();
+		initListeners();
+		initMapResource();
+	}
+	
+	private void initComponents() {
+		// TODO Auto-generated method stub
+		mWifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+		mSearchAlgorithm = new SearchPathAlgorithm(); 
+		mMyLocation = new Location(1,2,3982,335);
+		DBManager.setContext(this);
+		mLanguageAdapter = LanguageAdapter.getInstance(this);
+		mIndoorLocationAlgorithm = new IndoorLocationAlgorithm("/sdcard/PathHelper/fingerPrinting/");
+		mWiFiReceiver = new WiFiReceiver(mWifiManager);
+		registerReceiver(mWiFiReceiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+		mIsListViewInScreen = true;
+	}
+
+	private void initViews() {
+		mMapView = (MapView) findViewById(R.id.mapview);
+		mZoomInButton = (ImageView) findViewById(R.id.bigger_btn);
+		mZoomOutButton = (ImageView) findViewById(R.id.smaller_btn);
+		mNavigationButton = (ImageView) findViewById(R.id.navigation_btn);
+		mFacilitiesButton = (ImageView) findViewById(R.id.facilities_btn);
+		mLayerOptionButton = (ImageView) findViewById(R.id.layer_option_btn);
+		mPositionOptionButton = (ImageView) findViewById(R.id.position_option_btn);
+		mIndoorLocationButton = (ImageView) findViewById(R.id.my_position_button);
+		mSearchEditText = (EditText) findViewById(R.id.search_edittext);
+		mNearFacilityListView = (ListView) findViewById(R.id.near_facility_listview);
+		mAnimatonStartX = mNearFacilityListView.getLeft();
+	
+		setListViewAdapter(mMyLocation.floorId);
+		initLanguage();
+	}
+
+	private void initLanguage() {
+		// TODO Auto-generated method stub
+		mNavigationButton.setImageResource(mLanguageAdapter.getIdWithLanguageAdaptation("drawable", "navigation_button"));
+		mFacilitiesButton.setImageResource(mLanguageAdapter.getIdWithLanguageAdaptation("drawable", "facilities_button"));
+		mLayerOptionButton.setImageResource(mLanguageAdapter.getIdWithLanguageAdaptation("drawable", "layer_option_button"));
+		mPositionOptionButton.setImageResource(mLanguageAdapter.getIdWithLanguageAdaptation("drawable", "position_option_button"));
+		mMapView.postInvalidate();
+	}
+
+	private void initListeners() {
+		View.OnClickListener lsn = new View.OnClickListener() {
+			
+			@Override
+			public void onClick(View v) {
+				// TODO Auto-generated method stub
+				switch (v.getId()) {
+				case R.id.bigger_btn:
+					mMapView.upMapScaleRate();
+					break;
+				case R.id.smaller_btn:
+					mMapView.downMapScaleRate();
+				case R.id.navigation_btn:
+					new Thread(new Runnable() {
+						
+						@Override
+						public void run() {
+							// TODO Auto-generated method stub
+							try {
+								Location location = mMapView.getMiddleLocation();
+								List<Corner> list = mSearchAlgorithm.findPathBySPFA(mMyLocation, mTargetLocation, location);
+								if ( list != null ) {
+									mMapView.setCornerPath(list);
+								}
+							} catch (Exception e) {
+								// TODO: handle exception
+								mHandler.sendEmptyMessage(MSG_OUT_OF_BOUNDARY);
+							}
+							
+						}
+					}).start();
+					break;
+				case R.id.facilities_btn:
+					startActivityForResult(new Intent(MainActivity.this, FacilityActivity.class), REQUEST_FACILITY);
+					break;
+				case R.id.layer_option_btn:
+					startActivityForResult(new Intent(MainActivity.this, LayerActivity.class), REQUEST_LAYER);
+					break;
+				case R.id.my_position_button:
+					mWiFiReceiver.setWiFiManager(mWifiManager);
+					mWifiManager.startScan();
+					break;
+				case R.id.position_option_btn:
+					setListViewAnimation();
+					break;
+				default:
+					break;
+				}
+				
+			}
+
+		};
+		mZoomInButton.setOnClickListener(lsn);
+		mZoomOutButton.setOnClickListener(lsn);
+		mNavigationButton.setOnClickListener(lsn);
+		mFacilitiesButton.setOnClickListener(lsn);
+		mPositionOptionButton.setOnClickListener(lsn);
+		mLayerOptionButton.setOnClickListener(lsn);
+		mIndoorLocationButton.setOnClickListener(lsn);
+		
+		mSearchEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+			@Override
+			public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+				// TODO Auto-generated method stub
+				if ( actionId == EditorInfo.IME_ACTION_DONE ) {
+					if ( !v.getText().toString().equals("") ) {
+						List<Model> facilities = null;
+						if ( mLanguageAdapter.getLanguage() == LanguageAdapter.LANGUAGE_ZH ) {
+							facilities = DBFacade.findSimilarByFieldName(v.getText().toString(), Facility.class, "name");
+						}
+						else if ( mLanguageAdapter.getLanguage() == LanguageAdapter.LANGUAGE_EN ) {
+							facilities = DBFacade.findSimilarByFieldName(v.getText().toString(), Facility.class, "nameEn");
+						}
+						final List<Model> tempFacilities = facilities;
+						if ( tempFacilities != null && tempFacilities.size() != 0 ) {
+							mSelectDialog = DialogFactory.getInstance(mContext).getSelectDialog(new AdapterView.OnItemClickListener(){
+								@Override
+								public void onItemClick(AdapterView<?> parent,
+										View view, int position, long id) {
+									// TODO Auto-generated method stub
+									Facility facility = (Facility)tempFacilities.get(position);
+									if ( facility.getFloorId().intValue() != mMapView.getFloorId() ) {
+										setMapContent(facility.getFloorId().intValue());
+									} 
+									mTargetLocation = new Location(mMapView.getBuildingId(), mMapView.getFloorId(), facility.getX().floatValue(), facility.getY().floatValue());
+									mMapView.setTargetPosition(mTargetLocation);
+									mMapView.setMapPositionMiddle(facility.getX().floatValue(), facility.getY().floatValue());
+									mSelectDialog.cancel();
+								}
+					
+							}, facilities, mMyLocation);
+							mSelectDialog.show();
+						} else {
+							mHandler.sendEmptyMessage(MSG_NOT_FOUND_FACILITY);
+						}
+						
+					}
+					return true;
+				}
+				return false;
+			}
+		});
+		
+		mWiFiReceiver.setOnWiFiDataGettedListener(new OnWiFiDataGettedListener() {
+			
+			@Override
+			public void onWiFiDataGetted(HashMap<String, Double> rssVec) {
+				// TODO Auto-generated method stub
+				mMyLocation = mIndoorLocationAlgorithm.predictLocation(rssVec);
+				mMapView.setMyPosition(mMyLocation);
+				setListViewAdapter(mMyLocation.floorId);
+			}
+
+		});
+		
+		mNearFacilityListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+
+			@Override
+			public void onItemClick(AdapterView<?> parent, View view,
+					int position, long id) {
+				// TODO Auto-generated method stub
+				PointF pointF = mNearFacilityAdapter.getSelectedFacilityPosition(position);
+				mTargetLocation = new Location(mMapView.getBuildingId(), mMapView.getFloorId(), pointF.x, pointF.y);
+				mMapView.setTargetPosition(mTargetLocation);
+				mMapView.setMapPositionMiddle(pointF.x, pointF.y);
+				mNearFacilityAdapter.setClicked(position);
+				mNearFacilityAdapter.notifyDataSetChanged();
+			}
+		});
+	}
+	
+	private void setListViewAnimation() {
+		// TODO Auto-generated method stub
+		if ( mIsListViewInScreen ) {
+			AnimationSet animation = new OutAndGoRightAnimtion(true);
+			animation.setAnimationListener(new AnimationListener() {
+				
+				@Override
+				public void onAnimationStart(Animation animation) {
+					// TODO Auto-generated method stub
+					mPositionOptionButton.setEnabled(false);
+					mNearFacilityListView.setEnabled(false);
+					mNearFacilityListView.setClickable(false);
+				}
+				
+				@Override
+				public void onAnimationRepeat(Animation animation) {
+					// TODO Auto-generated method stub
+					
+				}
+				
+				@Override
+				public void onAnimationEnd(Animation animation) {
+					// TODO Auto-generated method stub
+					mPositionOptionButton.setEnabled(true);
+					mNearFacilityListView.setVisibility(View.INVISIBLE);
+					mIsListViewInScreen = false;
+				}
+			});
+			mNearFacilityListView.startAnimation(animation);
+			
+		} else {
+			AnimationSet animation = new ComeAndGoLeftAnimtion(true);
+			animation.setAnimationListener(new AnimationListener() {
+				
+				@Override
+				public void onAnimationStart(Animation animation) {
+					// TODO Auto-generated method stub
+					mPositionOptionButton.setEnabled(false);
+					mNearFacilityListView.setEnabled(true);
+					mNearFacilityListView.setClickable(true);
+					mNearFacilityListView.setVisibility(View.VISIBLE);
+				}
+				
+				@Override
+				public void onAnimationRepeat(Animation animation) {
+					// TODO Auto-generated method stub
+					
+				}
+				
+				@Override
+				public void onAnimationEnd(Animation animation) {
+					// TODO Auto-generated method stub
+					mPositionOptionButton.setEnabled(true);
+					mIsListViewInScreen = true;
+				}
+			});
+			mNearFacilityListView.startAnimation(animation);
+		}
+	}
+	
+	private void setListViewAdapter(int floorId) {
+		// TODO Auto-generated method stub
+		List<Model> facilities = DBFacade.findByFieldName(floorId, Facility.class, "floorId");
+		mNearFacilityAdapter = new NearFacilityAdapter(mContext, facilities, mMyLocation);
+		mNearFacilityListView.setAdapter(mNearFacilityAdapter);
+	}
+
+	private void initMapResource() {
+		// TODO Auto-generated method stub
+		mMapView.setLanguageAdapter(mLanguageAdapter);
+		mMapView.setMiddleBitmap(BitmapFactory.decodeResource(getResources(), R.drawable.middle));
+		mMapView.setMyPositionBitmap(BitmapFactory.decodeResource(getResources(), R.drawable.my_location));
+		mMapView.setTargetBitmap(BitmapFactory.decodeResource(getResources(),R.drawable.my_destination));
+		mMapView.setScaleRate(1f);
+		setMapContent(2);
+		
+		mMapView.setOnTargetSelectListener(new MapView.OnTargetSelectListener() {
+			
+			@Override
+			public void onTargetSelect() {
+				// TODO Auto-generated method stub
+				try {
+				mTargetLocation = mMapView.getTargetLocation();
+				MapConstraint.targetNearCorners = SearchPathAlgorithm.findNearCorner(mMapView, mMapView.getTargetLocation());
+				} catch (Exception e) {
+					// TODO: handle exception
+					mHandler.sendEmptyMessage(MSG_OUT_OF_BOUNDARY);
+				}
+			}
+		});
+		mMapView.setOnMyPositionSelectListener(new MapView.OnMyPositionSelectListener() {
+			
+			@Override
+			public void onMyPositionSelect() {
+				// TODO Auto-generated method stub
+				MapConstraint.sourceNearCorners = SearchPathAlgorithm.findNearCorner(mMapView, mMapView.getMyLocation());
+			}
+		});
+		mMapView.setOnMiddlePositionSelectListener(new MapView.OnMiddlePositionSelectListener() {
+			
+			@Override
+			public void onMiddlePositionSelect() {
+				// TODO Auto-generated method stub
+				MapConstraint.middleNearCorners = SearchPathAlgorithm.findNearCorner(mMapView, mMapView.getMiddleLocation());
+			}
+		});
+		mMapView.setMyPosition(mMyLocation);
+	}
+	
+	private void setMapContent(int floorId) {
+		yl.demo.pathHelper.db.model.Map map = (yl.demo.pathHelper.db.model.Map)DBFacade.findById(floorId, yl.demo.pathHelper.db.model.Map.class);
+		List<Model> facilitys = DBFacade.findByFieldName(floorId, Facility.class, "floorId");
+		MapView.MapBlockInfo mapBlockInfo = new MapView.MapBlockInfo(map.getVerticalNumber(), map.getHorizontalNumber(), map.getBlockWidth(), map.getBlockHeight(), MapView.MapBlockInfo.PIC_TYPE_JPEG);
+		mapBlockInfo.mMapBlockName = map.getPathName();
+		mMapView.setMapBlockInfo(mapBlockInfo);
+		mMapView.setMapInfo(1, map.getFloorId());
+		mMapView.setFacilitiesLogo(facilitys);
+		mMapView.createMapBlocks();
+	}
+
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		// Inflate the menu; this adds items to the action bar if it is present.
+		menu.add(Menu.NONE, Menu.FIRST+1, 1, "”Ô—‘");
+		return true;
+	}
+	
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		// TODO Auto-generated method stub
+		switch (item.getItemId()) {
+		case Menu.FIRST+1:
+			DialogFactory.getInstance(mContext).getLanguageChoiceDialog(mHandler).show();
+			break;
+		default:
+			break;
+		}
+		return super.onOptionsItemSelected(item);
+	}
+	
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		// TODO Auto-generated method stub
+		super.onActivityResult(requestCode, resultCode, data);
+		switch (requestCode) {
+		case REQUEST_FACILITY:
+			if ( resultCode == RESULT_OK )
+				mMapView.setFacilityVisible(data.getIntArrayExtra("facility"));
+			break;
+		case REQUEST_LAYER:
+			if ( resultCode == RESULT_OK ) {
+				int floorId = data.getIntExtra("floorId", 2);
+				setMapContent(floorId);
+				setListViewAdapter(floorId);	
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	
+	@Override
+	protected void onDestroy() {
+		// TODO Auto-generated method stub
+		super.onDestroy();
+		unregisterReceiver(mWiFiReceiver);
+	}
+
+}

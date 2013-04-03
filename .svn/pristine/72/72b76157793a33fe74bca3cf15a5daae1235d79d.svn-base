@@ -1,0 +1,291 @@
+package yl.demo.pathHelper.algrorithm;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Queue;
+import java.util.Set;
+import java.util.Vector;
+
+import org.apache.http.cookie.CookieOrigin;
+import org.apache.http.cookie.SetCookie;
+
+import android.R.bool;
+import android.graphics.Point;
+import android.os.Handler;
+import android.util.Log;
+
+
+import yl.demo.pathHelper.db.DBFacade;
+import yl.demo.pathHelper.db.DBManager;
+import yl.demo.pathHelper.db.model.Building;
+import yl.demo.pathHelper.db.model.Corner;
+import yl.demo.pathHelper.db.model.Floor;
+import yl.demo.pathHelper.db.model.Model;
+import yl.demo.pathHelper.db.model.Path;
+import yl.demo.pathHelper.model.Location;
+import yl.demo.pathHelper.view.MapView;
+
+/**
+ * 寻路算法库
+ * @author jackqdyulei
+ *
+ */
+public class SearchPathAlgorithm {
+	public final static String TAG = "SearchPathAlgorithm";
+	private final static int TYPE_MIDDLE_FRONT = 0;
+	private final static int TYPE_MIDDLE_BACK = 1;
+	private final static int TYPE_NO_MIDDLE = 2;
+	/**
+	 * 通过Location信息，获取最近的拐点
+	 * @param location	
+	 * @return
+	 */
+	public static List<Corner> findNearCorner(MapView mapView, Location location) throws NullPointerException {
+		if ( location == null || mapView == null )
+			return null;
+		Set<Corner> corners = DBFacade.findCornerByFloorId(location.floorId);
+		List<Corner> nearCorners = null;
+		boolean hasInsert = false;
+		
+		for (Corner corner : corners) {
+			hasInsert = false;
+			if (nearCorners == null) {
+				nearCorners = new ArrayList<Corner>();
+				nearCorners.add(corner);
+			}
+			else {
+				for ( int i = 0; i < nearCorners.size(); i++ ) {
+					if (Math.hypot(corner.getX() - location.x, corner.getY() - location.y) < Math.hypot(nearCorners.get(i).getX() - location.x, nearCorners.get(i).getY() - location.y)) { 
+						nearCorners.add(i,corner);
+						hasInsert = true;
+						break;
+					}
+				}
+				if (!hasInsert) {
+					nearCorners.add(corner);
+				}
+			}
+			if ( nearCorners.size() >= 5 ) {
+				nearCorners.remove(nearCorners.size()-1);
+			}
+		}
+		 
+		
+		//List<Corner> returnCorners = adjustCornerByConnrct(mapView, nearCorners, location);
+		return adjustCornerByConnect(mapView, nearCorners, location);
+		//return nearCorners;
+	}
+	
+	private static List<Corner> adjustCornerByConnect(MapView mapView, List<Corner> corners, Location location) {
+		Point myPoint = new Point((int)location.x, (int)location.y);
+		List<Corner> nearCorners = new ArrayList<Corner>();
+		for (Corner corner : corners) {
+			Point targetPoint = new Point(corner.getX().intValue(), corner.getY().intValue());
+			if ( MapConstraint.isPathConnected(mapView.transformPathToPixels(myPoint, targetPoint))) {
+				nearCorners.add(corner);
+			}
+		}
+		if ( nearCorners.isEmpty() ) {
+			nearCorners.add(corners.get(0));
+		}
+		return nearCorners;
+	}
+	
+	/**
+	 * 进行拐点间距离重算，测试应用，用户不要随意调用
+	 */
+	@Deprecated
+	public void setPathData() {
+		List<Model> paths = DBFacade.findAllByTableCLass(Path.class);
+		Log.e("Data","size:"+paths.size());
+		for (Model model : paths) {
+			Path path = (Path) model;
+			Corner corner1 = (Corner)DBFacade.findById(path.getCornerIdFrom(), Corner.class);
+			Corner corner2 = (Corner)DBFacade.findById(path.getCornerIdTo(), Corner.class);
+			double x1 = corner1.getX().doubleValue();
+			double y1 = corner1.getY().doubleValue();
+			double x2 = corner2.getX().doubleValue();
+			double y2 = corner2.getY().doubleValue();
+			double length = Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+			Log.e("Data", length+"");
+			path.setLength(new Double(length));
+			
+			DBFacade.update(path);
+		}
+	}
+	
+	/**
+	 * 通过SPFA算法，进行寻路
+	 * @param sourceCorner	初始拐点
+	 * @param targetCorner	终止拐点
+	 * @return 寻路产生的拐点List
+	 */
+	public List<Corner> findPathBySPFA(Location sourceLocation, Location targetLocation, int type){
+		int INF = 60000;
+		List<Integer> q;  	//SPFA运算队列
+		double[][] graphs;	//图结构
+		boolean[] visited;	//记录节点是否已访问
+		double distance[];	//SPFA距离数组
+		//拐点<->图坐标映射map
+		HashMap<Integer, Integer> cornerToGraphsHashMap = new HashMap<Integer, Integer>(); 
+		HashMap<Integer, Integer> GraphsToCornerHashMap = new HashMap<Integer, Integer>();
+		//路途记录map
+	    HashMap<Integer, List<Corner>> pathHashMap = new HashMap<Integer, List<Corner>>();
+	    HashMap<Integer, Corner> cornerHashMap = new HashMap<Integer, Corner>();
+	    int i,j,N;
+	    int id = 0;
+	    
+	    List<Corner> sourceNearCorners = null;
+	    List<Corner> targetNearCorners = null;
+	    switch(type) {
+	    	case TYPE_NO_MIDDLE:
+	    		sourceNearCorners = MapConstraint.sourceNearCorners;
+	    		targetNearCorners = MapConstraint.targetNearCorners;
+	    		break;
+	    	case TYPE_MIDDLE_FRONT:
+	    		sourceNearCorners = MapConstraint.sourceNearCorners;
+	    		targetNearCorners = MapConstraint.middleNearCorners;
+	    		break;
+	    	case TYPE_MIDDLE_BACK:
+	    		sourceNearCorners = MapConstraint.middleNearCorners;
+	    		targetNearCorners = MapConstraint.targetNearCorners;
+	    		break;
+	    	default:
+	    		break;	
+	    }
+	    
+	    
+	    Corner sourceCorner = new Corner(60000,sourceLocation.floorId, Double.valueOf(sourceLocation.x), Double.valueOf(sourceLocation.y));
+	    Corner targetCorner = new Corner(60001,targetLocation.floorId, Double.valueOf(targetLocation.x), Double.valueOf(targetLocation.y));
+	    
+	    //获取拐点和路径信息，进行拐点与图坐标映射，构造图结构
+	    List<Model> cornerSets = new ArrayList<Model>();
+	    if ( sourceLocation.floorId == targetLocation.floorId ) {
+	    	cornerSets = DBFacade.findByFieldName(sourceLocation.floorId, Corner.class, "floorId");
+	    } else {
+	    	cornerSets = DBFacade.findAllByTableCLass(Corner.class);
+	    }
+	    N = cornerSets.size()+2;
+	    for (Model model : cornerSets) {
+			Corner corner = (Corner)model;
+			cornerToGraphsHashMap.put(corner.getId(), id);
+			GraphsToCornerHashMap.put(id, corner.getId());
+			cornerHashMap.put(id, corner);
+			id++;
+		}
+	    cornerToGraphsHashMap.put(sourceCorner.getId(), id);
+		GraphsToCornerHashMap.put(id, sourceCorner.getId());
+		cornerHashMap.put(id, sourceCorner);
+		id++;
+		cornerToGraphsHashMap.put(targetCorner.getId(), id);
+		GraphsToCornerHashMap.put(id, targetCorner.getId());
+		cornerHashMap.put(id, targetCorner);
+	    
+	  //构建路径图
+	    graphs = new double[N][];
+	    for ( i = 0; i < N; i++ ) {
+	    	graphs[i] = new double[N];
+	    	for ( j = 0; j < N; j++ ) {
+	    		graphs[i][j] = INF;
+	    	}
+	    } 
+	    List<Model> paths = DBFacade.findAllByTableCLass(Path.class);
+	    for (Model model : paths) {
+			Path path = (Path)model;
+			int cornerFromId = path.getCornerIdFrom();
+			int cornerToId = path.getCornerIdTo();
+			double length = path.getLength();
+			if ( cornerToGraphsHashMap.get(cornerFromId) != null && cornerToGraphsHashMap.get(cornerToId) != null) {
+				graphs[cornerToGraphsHashMap.get(cornerFromId)][cornerToGraphsHashMap.get(cornerToId)] = length;
+				graphs[cornerToGraphsHashMap.get(cornerToId)][cornerToGraphsHashMap.get(cornerFromId)] = length;
+			}
+		}
+	    
+	    for (Corner corner : sourceNearCorners) {
+	    	double x1 = corner.getX().doubleValue();
+	    	double y1 = corner.getY().doubleValue();
+	    	double x2 = sourceCorner.getX().doubleValue();
+	    	double y2 = sourceCorner.getY().doubleValue();
+			double length = Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+			graphs[cornerToGraphsHashMap.get(corner.getId())][cornerToGraphsHashMap.get(sourceCorner.getId())] = length;
+			graphs[cornerToGraphsHashMap.get(sourceCorner.getId())][cornerToGraphsHashMap.get(corner.getId())] = length;
+		}
+	    
+	    for (Corner corner : targetNearCorners) {
+	    	double x1 = corner.getX().doubleValue();
+	    	double y1 = corner.getY().doubleValue();
+	    	double x2 = targetCorner.getX().doubleValue();
+	    	double y2 = targetCorner.getY().doubleValue();
+			double length = Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+			graphs[cornerToGraphsHashMap.get(corner.getId())][cornerToGraphsHashMap.get(targetCorner.getId())] = length;
+			graphs[cornerToGraphsHashMap.get(targetCorner.getId())][cornerToGraphsHashMap.get(corner.getId())] = length;
+		}
+	    
+	    
+	    //初始化返回的路径List
+	    for ( i = 0; i < N; i++ ) {
+	    	List<Corner> corners = new ArrayList<Corner>();
+	    	corners.add(sourceCorner);
+	    	pathHashMap.put(i, corners);
+	    }
+	    
+	    //获取初始，结束点信息
+	    int s = cornerToGraphsHashMap.get(sourceCorner.getId().intValue());
+	    int e = cornerToGraphsHashMap.get(targetCorner.getId().intValue());
+	    
+	    //进行SPFA寻路
+	    distance = new double[N];
+	    q = new ArrayList<Integer>();
+	    visited = new boolean[N];
+	    for ( i = 0; i < N; i++ ) 
+	    	visited[i] = false;
+	    for(i=0;i<N;i++)
+	    	distance[i]=INF;
+	    distance[s]=0;
+	    q.add(s);
+	    visited[s]=true;
+	    while(!q.isEmpty()){
+	        int v=q.get(0);
+	        q.remove(0);
+	        visited[v]=false;
+	        for(i=0;i<N;i++)
+	        {
+	            if(distance[i]>distance[v]+graphs[i][v])
+	            {
+	                distance[i] = distance[v]+graphs[i][v];
+	                pathHashMap.get(i).clear();
+	                List<Corner> corners = new ArrayList<Corner>();
+	                corners.addAll(pathHashMap.get(v));
+	                Corner nextCorner = cornerHashMap.get(i);
+	                if ( nextCorner != null ) 
+	                	corners.add(nextCorner);
+	                pathHashMap.remove(i);
+	                pathHashMap.put(i, corners);
+	                if(!visited[i])
+	                {
+	                	visited[i]=true;
+	                    q.add(i);
+	                }
+	            }
+	        }
+	    }
+	    pathHashMap.get(e).add(targetCorner);
+	    return pathHashMap.get(e);
+	}
+	
+	public List<Corner> findPathBySPFA(Location sourceLocation, Location targetLocation, Location passLocation) {
+		if ( passLocation == null ) {
+			return findPathBySPFA(sourceLocation, targetLocation, TYPE_NO_MIDDLE);
+		} else {
+			List<Corner> pathCorners = new ArrayList<Corner>();
+			pathCorners.addAll(findPathBySPFA(sourceLocation, passLocation, TYPE_MIDDLE_FRONT));
+			pathCorners.addAll(findPathBySPFA(passLocation, targetLocation, TYPE_MIDDLE_BACK));
+			return pathCorners;
+		}
+	}
+}

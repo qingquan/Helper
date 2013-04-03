@@ -1,0 +1,82 @@
+package yl.demo.pathHelper;
+
+import yl.demo.pathHelper.Adapter.LayersAdapter;
+import android.app.Activity;
+import android.content.Intent;
+import android.os.Bundle;
+import android.view.View;
+import android.view.Window;
+import android.widget.ExpandableListView;
+import android.widget.ExpandableListView.OnChildClickListener;
+import android.widget.ImageView;
+
+public class LayerActivity extends Activity {
+	public static final int MSG_UPDATA_LISTVIEW = 0;
+	
+	private ExpandableListView mLayerListView;
+	private ImageView mOKButton;
+	private LayersAdapter mLayersAdapter;
+	
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		// TODO Auto-generated method stub
+		super.onCreate(savedInstanceState);
+		requestWindowFeature(Window.FEATURE_NO_TITLE);
+		setContentView(R.layout.layer_layout);
+		
+		initComponent();
+		initViews();
+		setListeners();
+	}
+
+	private void setListeners() {
+		// TODO Auto-generated method stub
+		mOKButton.setOnClickListener(new View.OnClickListener() {
+			
+			@Override
+			public void onClick(View v) {
+				// TODO Auto-generated method stub
+				
+			}
+		});
+		
+		mLayerListView.setOnChildClickListener(new OnChildClickListener() {
+			
+			@Override
+			public boolean onChildClick(ExpandableListView parent, View v,
+					int groupPosition, int childPosition, long id) {
+				// TODO Auto-generated method stub
+				Intent intent = new Intent();
+				intent.putExtra("floorId", mLayersAdapter.getFloorId(groupPosition, childPosition));
+				LayerActivity.this.setResult(RESULT_OK, intent);
+				LayerActivity.this.finish();
+				return false;
+			}
+		});
+		
+	}
+
+	private void initViews() {
+		// TODO Auto-generated method stub
+		mLayerListView = (ExpandableListView) findViewById(R.id.layer_listview);
+		mOKButton = (ImageView) findViewById(R.id.layer_choose_btn);
+		
+		mLayerListView.setAdapter(mLayersAdapter);
+		mLayerListView.setDivider(null);
+	}
+
+	private void initComponent() {
+		// TODO Auto-generated method stub
+		mLayersAdapter = new LayersAdapter(LayerActivity.this);
+	}
+	
+	@Override
+	public void onBackPressed() {
+		// TODO Auto-generated method stub
+		super.onBackPressed();
+		Intent intent = new Intent();
+		LayerActivity.this.setResult(RESULT_CANCELED, intent);
+		LayerActivity.this.finish();
+	}
+
+}

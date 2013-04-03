@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">定位导航</string>
+    <string name="hello_world">Hello world!</string>
+    <string name="menu_settings">Settings</string>
+    <string name="input_address_zh">搜索地点</string>
+    <string name="input_address_en">search facility</string> 
+    <string name="url_error_collect">http://yy.gzayong.info:8080/AppErrorCollection/error</string>
+    <string name="not_select_item_zh">还没有选择</string>
+    <string name="not_select_item_en">not select a item</string>
+    <string-array name = "facility_zh">
+        <item>餐厅</item>
+        <item>商店</item>
+        <item>男厕</item>
+        <item>女厕</item>
+        <item>垂直电梯</item>
+        <item>扶手电梯</item>
+        <item>楼梯</item>
+        <item>ATM机</item>
+        <item>房间</item>
+        <item>指南</item>
+        <item>服务台</item>
+        <item>休息室</item>
+        <item>儿童设施</item>
+    </string-array>
+    <string-array name = "facility_en">
+        <item>restaurant</item>
+        <item>store</item>
+        <item>male toilet</item>
+        <item>female toilet</item>
+        <item>lift</item>
+        <item>escalator</item>
+        <item>stair</item>
+        <item>ATM</item>
+        <item>room</item>
+        <item>guide</item>
+        <item>serve counter</item>
+        <item>rest room</item>
+        <item>children facility</item>
+    </string-array>
+    <string-array name = "building_zh">
+        <item>科技楼</item>
+        <item>宿舍楼</item>
+    </string-array>
+    <string-array name = "building_en">
+        <item>academic building</item>
+        <item>dormitory building</item>
+    </string-array>
+    <string-array name = "building1_zh">
+        <item>科技楼地面</item>
+        <item>0</item>
+        <item>科技楼一层</item>
+        <item>1</item>
+        <item>科技楼二层</item>
+        <item>2</item>
+    </string-array>
+    <string-array name = "building1_en">
+        <item>ground floor</item>
+        <item>0</item>
+        <item>floor 1</item>
+        <item>1</item>
+        <item>floor 2</item>
+        <item>2</item>
+    </string-array>
+    <string-array name = "building2_zh"></string-array>
+    <string-array name = "building2_en"></string-array>
+</resources>

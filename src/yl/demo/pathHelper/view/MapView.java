@@ -1,0 +1,674 @@
+package yl.demo.pathHelper.view;
+
+import java.io.InputStream;
+import java.text.BreakIterator;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import yl.demo.pathHelper.algrorithm.SearchPathAlgorithm;
+import yl.demo.pathHelper.db.model.Corner;
+import yl.demo.pathHelper.db.model.Facility;
+import yl.demo.pathHelper.db.model.Model;
+import yl.demo.pathHelper.model.Location;
+import yl.demo.pathHelper.util.LanguageAdapter;
+import yl.demo.pathHelper.util.PreferenceUtils;
+
+import android.R.integer;
+import android.content.Context;
+import android.content.res.AssetManager;
+import android.drm.DrmStore.RightsStatus;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Point;
+import android.graphics.PointF;
+import android.graphics.RectF;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+import android.util.AttributeSet;
+import android.util.Log;
+import android.view.MotionEvent;
+import android.view.View;
+
+public class MapView extends View {
+	private final static String TAG = "mapView";
+	private final static float RATE_MAX = 2;
+	private final static float RATE_MIN = 0.5f;
+	private final static int MOVE_THRESHLOD = 4;
+	
+	public final static int TYPE_SELECT_TARGET = 0;
+	public final static int TYPE_SELECT_MIDDLE = 1;
+	public final static int TYPE_CORRECT_POSITION = 2;
+
+	private Bitmap mSourceBitmap;
+	private Bitmap mTargetBitmap;
+	private Bitmap mMiddleBitmap;
+	private float mScaleRate;
+	private float mPrevScaleRate;
+	private float mTempLength;
+	private float mLeft;
+	private float mTop;
+	private PointF[] mPrePointF = { new PointF(), new PointF() };
+	private Location mMyLocation;
+	private Location mTargetLocation;
+	private Location mMiddleLocation;
+	private boolean hasSetPath;
+	private List<Corner> mCornerPaths;
+	private Paint mLinePaint;
+	private Paint mTextPaint;
+	private int mPointNo;
+	private int mMoveCount;
+	private Context mContext;
+	private HashMap<Integer, MapBlock> mMapBlockMap;
+	private MapBlockInfo mMapBlockInfo;
+	private int mBuildingId;
+	private int mFloorId;
+	private int mSelectType;
+	private List<Model> mFacilities;
+	private HashMap<String, Bitmap> mFacilityBitmapHashMap;
+	private OnTargetSelectListener mOnTargetSelectListener;
+	private OnMyPositionSelectListener mOnMyPositionSelectListener;
+	private OnMiddlePositionSelectListener mOnMiddlePositionListener;
+	private boolean isDraw;
+	private LanguageAdapter mLanguageAdapter;
+	private int[] mFacilityVisibleConfig;
+
+	public MapView(Context context, AttributeSet attrs) {
+		super(context, attrs);
+		// TODO Auto-generated constructor stub
+		mContext = context;
+		mLeft = mTop = 0;
+		hasSetPath = false;
+		mLinePaint = new Paint();
+		mLinePaint.setColor(Color.RED);
+		mLinePaint.setStrokeJoin(Paint.Join.ROUND);
+		mLinePaint.setStrokeCap(Paint.Cap.ROUND);
+		mLinePaint.setStrokeWidth(7);
+		mTextPaint = new Paint();
+		mTextPaint.setTextSize(25);
+		mTextPaint.setColor(Color.BLACK);
+		mFacilityBitmapHashMap = new HashMap<String, Bitmap>();
+		initFacilityVisible();
+		mSelectType = TYPE_SELECT_TARGET;
+	}
+
+	public MapView(Context context) {
+		super(context);
+		// TODO Auto-generated constructor stub
+		mContext = context;
+		mLeft = mTop = 0;
+		hasSetPath = false;
+		mLinePaint = new Paint();
+		mLinePaint.setColor(Color.RED);
+		mLinePaint.setStrokeJoin(Paint.Join.ROUND);
+		mLinePaint.setStrokeCap(Paint.Cap.ROUND);
+		mLinePaint.setStrokeWidth(7);
+		mTextPaint = new Paint();
+		mTextPaint.setTextSize(25);
+		mTextPaint.setColor(Color.BLACK);
+		mFacilityBitmapHashMap = new HashMap<String, Bitmap>();
+		initFacilityVisible();
+		mSelectType = TYPE_SELECT_TARGET;
+	}
+	
+	private void initFacilityVisible() {
+		// TODO Auto-generated method stub
+		mFacilityVisibleConfig = new int[20];
+		for ( int i = 0; i < mFacilityVisibleConfig.length; i++ ) {
+			if ( PreferenceUtils.getBooleanValue(mContext, PreferenceUtils.KEY_FACILITY+i) ) 
+				mFacilityVisibleConfig[i] = 1;
+		}
+	}
+	
+	public void setMapBlockInfo(MapBlockInfo mapBlockInfo) {
+		mMapBlockInfo = mapBlockInfo;
+	}
+	
+	public MapBlockInfo getMapBlockInfo() {
+		return mMapBlockInfo;
+	}
+	
+	public void setMapInfo(int buildingId, int floorId) {
+		mBuildingId = buildingId;
+		mFloorId = floorId;
+	}
+
+	public void createMapBlocks() {
+		// TODO Auto-generated method stub
+		mLeft = mTop = 0;
+		mMapBlockMap = new HashMap<Integer, MapBlock>();
+		mFacilityBitmapHashMap.clear();
+		for (int i = 0; i < mMapBlockInfo.mHorizontalNumber; i++)
+			for (int j = 0; j < mMapBlockInfo.mVerticalNumber; j++) {
+				String filePath = mMapBlockInfo.getMapBlockFileName(j, i);
+				MapBlock mapBlock = new MapBlock(i * mMapBlockInfo.mBlockWidth, j * mMapBlockInfo.mBlockHeight, i, j, filePath);
+				mapBlock.setWidth(mMapBlockInfo.mBlockWidth);
+				mapBlock.setHeight(mMapBlockInfo.mBlockHeight);
+				mMapBlockMap.put(j*mMapBlockInfo.mHorizontalNumber+i, mapBlock);
+			}
+		isDraw = false;
+		postDelayed(new Runnable() {
+			@Override
+			public void run() {
+				// TODO Auto-generated method stub
+				postInvalidate();
+				isDraw = true;
+			}
+		}, 500);
+		postInvalidate();
+	}
+	
+	public void setLanguageAdapter(LanguageAdapter languageAdapter) {
+		mLanguageAdapter = languageAdapter;
+	}
+
+	public void setMyPositionBitmap(Bitmap sourceBitmap) {
+		mSourceBitmap = sourceBitmap;
+	}
+
+	public void setTargetBitmap(Bitmap destinationBitmap) {
+		mTargetBitmap = destinationBitmap;
+	}
+	
+	public void setMiddleBitmap(Bitmap middleBitmap) {
+		mMiddleBitmap = middleBitmap;
+	}
+	
+	public void setFacilityVisible(int[] facilityVisible) {
+		mFacilityVisibleConfig = facilityVisible;
+		postInvalidate();
+	}
+
+	public void setScaleRate(float rate) {
+		if ( mPrevScaleRate == 0 || mScaleRate == 0 )
+			mPrevScaleRate = mScaleRate = rate;
+		else {
+			mLeft = -((-mLeft + getWidth()/2)* mScaleRate / mPrevScaleRate - getWidth()/2);
+			mTop = -((-mTop + getHeight()/2)* mScaleRate / mPrevScaleRate - getHeight()/2);
+			mPrevScaleRate = mScaleRate;
+			mScaleRate = rate;
+			
+		}
+		
+		postInvalidate();
+	}
+
+	public void upMapScaleRate() {
+		final float scale = correctScaleRate(mScaleRate+0.3f);
+		changeScaleRateSlowly(scale);
+		postInvalidate();
+	}
+
+	public void downMapScaleRate() {
+		final float scale = correctScaleRate(mScaleRate-0.3f);
+		changeScaleRateSlowly(scale);
+		postInvalidate();
+	}
+	
+	private void changeScaleRateSlowly(final float toScaleRate ) {
+		final float distance = (toScaleRate - mScaleRate) / 10;
+		new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+				// TODO Auto-generated method stub
+				while ( Math.abs(mScaleRate + distance - toScaleRate ) > 0.03 ) {
+					try {
+						Thread.sleep(30);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					setScaleRate(mScaleRate + distance);
+				}
+				
+			}
+		}).start();
+	}
+	
+	private void correctScaleRate() {
+		mScaleRate = mScaleRate > RATE_MAX ? RATE_MAX : mScaleRate;
+		mScaleRate = mScaleRate < RATE_MIN ? RATE_MIN : mScaleRate;
+	}
+	
+	private float correctScaleRate(float scaleRate) {
+		scaleRate = scaleRate > RATE_MAX ? RATE_MAX : scaleRate;
+		scaleRate = scaleRate < RATE_MIN ? RATE_MIN : scaleRate;
+		
+		return scaleRate;
+	}
+
+	@Override
+	protected void onDraw(Canvas canvas) {
+		// TODO Auto-generated method stub
+		super.onDraw(canvas);
+		
+		canvas.translate(mLeft, mTop);
+		//canvas.scale(mScaleRate, mScaleRate, (mPrePointF[0].x + mPrePointF[1].x)/2 - mLeft, (mPrePointF[0].y + mPrePointF[1].y)/2 - mTop );
+		canvas.scale(mScaleRate, mScaleRate);
+		drawMapBlocks(canvas);
+		canvas.scale(1/mScaleRate, 1/mScaleRate);
+		if ( isDraw ) {
+			drawFacitilies(canvas);
+			drawMiddlePoint(canvas);
+			drawPaths(canvas);
+			drawSrcAndTargetIcon(canvas);
+		}
+	}
+
+	private void drawSrcAndTargetIcon(Canvas canvas) {
+		// TODO Auto-generated method stub
+		if ( mMyLocation != null && mMyLocation.floorId == mFloorId ) {
+			PointF pointF = transformToScreenCoordinate(mMyLocation.x, mMyLocation.y);
+			canvas.drawBitmap(mSourceBitmap, 0 + pointF.x - mSourceBitmap.getWidth() / 2, 0 + pointF.y - mSourceBitmap.getHeight() / 2, null);
+		}
+		if ( mTargetLocation != null && mTargetLocation.floorId == mFloorId ) {
+			PointF pointF = transformToScreenCoordinate(mTargetLocation.x, mTargetLocation.y);
+			canvas.drawBitmap(mTargetBitmap, 0 + pointF.x - mTargetBitmap.getWidth() / 2, 0 + pointF.y - mTargetBitmap.getHeight(), null);
+		}
+	}
+
+	private void drawPaths(Canvas canvas) {
+		// TODO Auto-generated method stub
+		if (hasSetPath) {
+			List<PointF> paths = new ArrayList<PointF>();
+			for (int i = 0; i < mCornerPaths.size(); i++) {
+				Corner corner = mCornerPaths.get(i);
+				if ( corner.getFloorId() == mFloorId ) {
+					paths.add(transformToScreenCoordinate(corner.getX().floatValue(), corner.getY().floatValue()));
+				}
+			}
+			for (int i = 0; i < paths.size() - 1; i++) {
+				canvas.drawLine(paths.get(i).x, paths.get(i).y, paths.get(i + 1).x, paths.get(i + 1).y, mLinePaint);
+			}
+		}
+		
+	}
+
+	private void drawMiddlePoint(Canvas canvas) {
+		// TODO Auto-generated method stub
+		if ( mMiddleLocation != null && mMiddleLocation.floorId == mFloorId ) {
+			canvas.drawBitmap(mMiddleBitmap, (float)mMiddleLocation.x-mMiddleBitmap.getWidth()/2, (float)mMiddleLocation.y-mMiddleBitmap.getHeight(), null);
+		}
+	}
+
+	private void drawFacitilies(Canvas canvas) {
+		// TODO Auto-generated method stub
+		if ( mFacilities != null && mLanguageAdapter != null) {
+			for (Model model : mFacilities) {
+				Facility facility = (Facility)model;
+				if ( mFacilityVisibleConfig[facility.getType()] == 0 )
+					continue;
+				String path = facility.getLogo();
+				if ( !mFacilityBitmapHashMap.containsKey(path) ) {
+					mFacilityBitmapHashMap.put(path, getBitmapFromDrawable(path));
+				}
+				PointF pointF = transformToScreenCoordinate(facility.getX().floatValue(), facility.getY().floatValue());
+				Bitmap bitmap = mFacilityBitmapHashMap.get(path);
+				canvas.drawBitmap(bitmap, pointF.x-bitmap.getWidth()/2, pointF.y-bitmap.getHeight()/2, null);
+				if ( mLanguageAdapter.getLanguage() == LanguageAdapter.LANGUAGE_ZH ) {
+					canvas.drawText(facility.getName(), pointF.x-bitmap.getWidth()/2-facility.getName().length()*6, pointF.y+mFacilityBitmapHashMap.get(path).getHeight()*1.1f, mTextPaint);
+				} else {
+					canvas.drawText(facility.getNameEn(), pointF.x-bitmap.getWidth()/2-facility.getNameEn().length()*3, pointF.y+mFacilityBitmapHashMap.get(path).getHeight()*1.1f, mTextPaint);
+				}
+			}
+		}
+	}
+
+	private void drawMapBlocks(Canvas canvas) {
+		// TODO Auto-generated method stub
+		startMapBlockControlThread();
+		Iterator iter = mMapBlockMap.entrySet().iterator(); 
+		while (iter.hasNext()) { 
+		    Map.Entry entry = (Map.Entry) iter.next(); 
+		    MapBlock mapBlock = (MapBlock)entry.getValue(); 
+		    if (mapBlock.hasMapBitmap()) {
+				try {
+					canvas.drawBitmap(mapBlock.getMapBitmap(), mapBlock.getLeft(), mapBlock.getTop(), new Paint());
+				} catch (Exception e) {
+					// TODO: handle exception
+					Log.e(TAG, "draw fail,the bitmap has been recyled");
+				}
+			}	
+		} 
+	}
+	
+	public void setMiddleLocation(float x, float y) {
+		if ( mMiddleLocation == null ) {
+			mMiddleLocation = new Location(mBuildingId, mFloorId, x, y);
+		} else {
+			mMiddleLocation.x = x;
+			mMiddleLocation.y = y;
+		}
+		mOnMiddlePositionListener.onMiddlePositionSelect();
+	}
+	
+	public void clearMiddleLocations() {
+		mMiddleLocation = null;
+	}
+	
+	public Location getMiddleLocation() {
+		return mMiddleLocation;
+	}
+	
+	private Runnable mDrawRunnable = new Runnable() {
+		
+		@Override
+		public synchronized void run() {
+			// TODO Auto-generated method stub
+			checkMap();
+		}
+	};
+
+	private void startMapBlockControlThread() {
+		// TODO Auto-generated method stub
+		new Thread(mDrawRunnable).start();
+	}
+
+	private void checkMap() {
+		// TODO Auto-generated method stub
+		RectF rectF = new RectF();
+		rectF.left = -mLeft / mScaleRate;
+		rectF.top = -mTop / mScaleRate;
+		rectF.right = (-mLeft + getWidth()) / mScaleRate;
+		rectF.bottom = (-mTop + getHeight()) / mScaleRate;
+		Iterator iter = mMapBlockMap.entrySet().iterator(); 
+		while (iter.hasNext()) { 
+		    Map.Entry entry = (Map.Entry) iter.next(); 
+		    MapBlock mapBlock = (MapBlock)entry.getValue(); 
+			if (mapBlock.isOverLap(rectF)) {
+				if (!mapBlock.hasMapBitmap()) {
+					mapBlock.putMapBitmap(getBitmapFromAssets(mapBlock.getFilePath()));
+					mapBlock.setBitmapFinished();
+				}
+			} else {
+				mapBlock.destoryMapBitmap();
+			}
+		}
+	}
+
+	@Override
+	public boolean onTouchEvent(MotionEvent event) {
+		// TODO Auto-generated method stub
+		switch (event.getActionMasked()) {
+		case MotionEvent.ACTION_DOWN:
+			mPointNo = 1;
+			mMoveCount = 0;
+			break;
+		case MotionEvent.ACTION_POINTER_DOWN:
+			mMoveCount = 0;
+			mPointNo = 2;
+			try {
+				mPrePointF[1].set(event.getX(1), event.getY(1));
+				mTempLength = new PointF(mPrePointF[1].x - mPrePointF[0].x,
+						mPrePointF[1].y - mPrePointF[0].y).length();
+			} catch (IllegalArgumentException e) {
+				// TODO: handle exception
+			}
+			break;
+		case MotionEvent.ACTION_MOVE:
+			mMoveCount++;
+			if (mPointNo == 1) {
+				mLeft += event.getX() - mPrePointF[0].x;
+				mTop += event.getY() - mPrePointF[0].y;
+				// setBoundaryInfo();
+			} else if (mPointNo == 2 && event.getPointerCount() == 2) {
+				
+				setScaleRate(correctScaleRate(mScaleRate *= new PointF(mPrePointF[1].x - mPrePointF[0].x,
+						mPrePointF[1].y - mPrePointF[0].y).length() / mTempLength));
+				mTempLength = new PointF(mPrePointF[1].x - mPrePointF[0].x,
+						mPrePointF[1].y - mPrePointF[0].y).length();
+				try {
+					mPrePointF[1].set(event.getX(1), event.getY(1));
+				} catch (IllegalArgumentException e) {
+					// TODO: handle exception
+				}
+				correctScaleRate();
+			}
+			postInvalidate();
+			break;
+		case MotionEvent.ACTION_POINTER_UP:
+			mPointNo = 0;
+			break;
+		case MotionEvent.ACTION_UP:
+			if (mMoveCount <= MOVE_THRESHLOD) {
+				if ( mSelectType == TYPE_SELECT_TARGET ) {
+					setTargetPosition((event.getX() - mLeft) / mScaleRate,(event.getY() - mTop) / mScaleRate);
+				} else if ( mSelectType == TYPE_SELECT_MIDDLE ) {
+					setMiddleLocation((event.getX() - mLeft) / mScaleRate,(event.getY() - mTop) / mScaleRate);
+				} else if ( mSelectType == TYPE_CORRECT_POSITION ) {
+					setMyPosition((event.getX() - mLeft) / mScaleRate,(event.getY() - mTop) / mScaleRate);
+				}
+				clearPath();
+				postInvalidate();
+			}
+			mPointNo = 0;
+			break;
+		default:
+			break;
+		}
+		mPrePointF[0].set(event.getX(), event.getY());
+		return true;
+	}
+
+	public void setCornerPath(List<Corner> paths) {
+		clearPath();
+		hasSetPath = true;
+		mCornerPaths = paths;
+	}
+
+	public void clearPath() {
+		hasSetPath = false;
+		mCornerPaths = null;
+		postInvalidate();
+	}
+
+	public void setMyPosition(float x, float y) {
+		mMyLocation = new Location(mBuildingId, mFloorId, x, y);
+		mOnMyPositionSelectListener.onMyPositionSelect();
+		postInvalidate();
+	}
+	
+	public void setMyPosition( Location location ) {
+		mMyLocation = location;
+		mOnMyPositionSelectListener.onMyPositionSelect();
+		postInvalidate();
+	}
+
+	public void setTargetPosition(float x, float y) {
+		mTargetLocation = new Location(mBuildingId, mFloorId, x, y);
+		mOnTargetSelectListener.onTargetSelect();
+		clearMiddleLocations();
+		postInvalidate();
+	}
+	
+	public void setTargetPosition(Location location) {
+		mTargetLocation = location;
+		mOnTargetSelectListener.onTargetSelect();
+		clearMiddleLocations();
+		postInvalidate();
+	}
+
+	public void setPathColor(int color) {
+		mLinePaint.setColor(color);
+	}
+
+	public void setPathStroke(int stroke) {
+		mLinePaint.setStrokeWidth(stroke);
+	}
+	
+	public int getSelectType() {
+		return mSelectType;
+	}
+
+	public Location getMyLocation() {
+		return mMyLocation;
+	}
+
+	public Location getTargetLocation() {
+		return mTargetLocation;
+	}
+
+	public PointF transformToScreenCoordinate(float x, float y) {
+		return new PointF(x*mScaleRate, y*mScaleRate);
+	}
+	
+	public void setFacilitiesLogo(List<Model> facilities) {
+		mFacilities = facilities;
+	}
+
+	private Bitmap getBitmapFromAssets(String fileName) {
+		Bitmap image = null;
+		try {
+			AssetManager am = mContext.getAssets();
+			InputStream is = am.open(fileName);
+			image = BitmapFactory.decodeStream(is);
+			is.close();
+		} catch (Exception e) {
+
+		}
+		return image;
+	}
+	
+	private Bitmap getBitmapFromDrawable(String fileName) {
+		int width = 30;
+		int height = 30;
+		Drawable drawable = mContext.getResources().getDrawable(mContext.getResources().getIdentifier(fileName, "drawable", mContext.getPackageName()));
+		BitmapDrawable bd = (BitmapDrawable) drawable;
+		Bitmap bitmap = bd.getBitmap();
+		Matrix matrix = new Matrix();
+		matrix.postScale((float)width/bitmap.getWidth(), (float)height/bitmap.getHeight());
+		return Bitmap.createBitmap(bd.getBitmap(), 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+	}
+	
+	public int getFloorId() {
+		return mFloorId;
+	}
+	
+	public int getBuildingId() {
+		return mBuildingId;
+	}
+	
+	public int[] transformPathToPixels( Point myPoint, Point targetPoint ) {
+		int length = Math.abs(myPoint.x - targetPoint.x) > Math.abs(myPoint.y - targetPoint.y) ? Math.abs(myPoint.x - targetPoint.x) : Math.abs(myPoint.y - targetPoint.y);
+		int pixels[] = new int[length];
+		for ( int i = 0; i < length; i++ ) {
+			int x = myPoint.x + (int)(( targetPoint.x - myPoint.x ) * i / (float)length);
+			int y = myPoint.y + (int)(( targetPoint.y - myPoint.y ) * i / (float)length);
+			int positionX = x / mMapBlockInfo.mBlockWidth;
+			int positionY = y / mMapBlockInfo.mBlockHeight;
+			int relativeX = x % mMapBlockInfo.mBlockWidth;
+			int relativeY = y % mMapBlockInfo.mBlockHeight;
+			MapBlock mapBlock =  mMapBlockMap.get(positionY*mMapBlockInfo.mHorizontalNumber+positionX);
+			Bitmap bitmap = mapBlock.getMapBitmap();
+			if ( bitmap == null ) {
+				bitmap = getBitmapFromAssets(mapBlock.getFilePath());
+				mapBlock.setBitmapFinished();
+				mapBlock.putMapBitmap(bitmap);
+			}
+			pixels[i] = bitmap.getPixel(relativeX, relativeY);
+		}
+		
+		return pixels;
+	}
+	
+	public void setMapPositionMiddle(float x, float y) {
+		mLeft = getWidth() / 2 - x * mScaleRate;
+		mTop = getHeight() / 2 - y * mScaleRate;
+	}
+	
+	public interface OnTargetSelectListener {
+		public void onTargetSelect();
+	}
+	
+	public interface OnMyPositionSelectListener {
+		public void onMyPositionSelect();
+	}
+	
+	public interface OnMiddlePositionSelectListener{
+		public void onMiddlePositionSelect();
+	}
+	
+	public void setOnTargetSelectListener(OnTargetSelectListener lsn) {
+		mOnTargetSelectListener = lsn;
+	}
+	
+	public void setOnMyPositionSelectListener(OnMyPositionSelectListener lsn) {
+		mOnMyPositionSelectListener = lsn;
+	}
+	
+	public void setOnMiddlePositionSelectListener(OnMiddlePositionSelectListener lsn) {
+		mOnMiddlePositionListener = lsn;
+	}
+	
+	public void setSelectType(int type) {
+		mSelectType = type;
+	}
+	
+	public static class MapBlockInfo {
+		private final static int BLOCK_WIDTH = 500;
+		private final static int BLOCK_HEIGHT = 500;
+		
+		public final static int PIC_TYPE_PNG = 0;
+		public final static int PIC_TYPE_JPG = 1;
+		public final static int PIC_TYPE_JPEG = 2;
+		
+		public int mVerticalNumber;
+		public int mHorizontalNumber;
+		public int mBlockWidth;
+		public int mBlockHeight;
+		public int mPicType;
+		public String mMapBlockName;
+		
+		public MapBlockInfo() {
+			// TODO Auto-generated constructor stub
+			mBlockWidth = BLOCK_WIDTH;
+			mBlockHeight = BLOCK_HEIGHT;
+			mVerticalNumber = mHorizontalNumber = 1;
+			mPicType = PIC_TYPE_JPEG;
+		}
+		
+		/**
+		 * 记录在整个地图中地图块的基本信息
+		 * @param vertical    地图矩阵中地图块的纵向个数
+		 * @param horizontal  地图矩阵中地图块的横向个数
+		 * @param blockWidth  矩阵块的宽度
+		 * @param blockHeight 矩阵块的高度
+		 * @param type        矩阵块的资源类型
+		 */
+		public MapBlockInfo( int vertical, int horizontal, int blockWidth, int blockHeight, int type ) {
+			mVerticalNumber = vertical;
+			mHorizontalNumber = horizontal;
+			mBlockWidth = blockWidth;
+			mBlockHeight = blockHeight;
+			mPicType = type;
+		}
+		
+		public String getMapBlockFileName( int vertical, int horizontal ) {
+			String type = null;
+			switch (mPicType) {
+			case PIC_TYPE_PNG:
+				type = ".png";
+				break;
+			case PIC_TYPE_JPG:
+				type = ".jpg";
+				break;
+			case PIC_TYPE_JPEG:
+				type = ".jpeg";
+				break;
+			default:
+				type = ".jpeg";
+				break;
+			}
+			return mMapBlockName + "_" + ( vertical * mHorizontalNumber + horizontal ) + type;
+		}
+		
+	}
+}

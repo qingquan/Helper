@@ -1,0 +1,79 @@
+package yl.demo.pathHelper.view;
+
+import java.util.List;
+
+import yl.demo.pathHelper.MainActivity;
+import yl.demo.pathHelper.R;
+import yl.demo.pathHelper.Adapter.SelectDialogAdapter;
+import yl.demo.pathHelper.db.model.Model;
+import yl.demo.pathHelper.model.Location;
+import yl.demo.pathHelper.util.LanguageAdapter;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.os.Handler;
+import android.widget.AdapterView;
+import android.widget.ListView;
+
+public class DialogFactory {
+	private static DialogFactory mInstance;
+	private Context mContext;
+
+	public static DialogFactory getInstance(Context context) {
+		if (mInstance == null) {
+			mInstance = new DialogFactory(context);
+		}
+		mInstance.setContext(context);
+		return mInstance;
+	}
+
+	private DialogFactory(Context context) {
+		mContext = context;
+	}
+	
+	private void setContext(Context context) {
+		mContext = context;
+	}
+	
+	public Dialog getSelectDialog(AdapterView.OnItemClickListener lsn, List<Model> facilities, Location location) {
+		ListView listView = new ListView(mContext);
+		listView.setAdapter(new SelectDialogAdapter(mContext, facilities, location));
+		listView.setOnItemClickListener(lsn);
+		Dialog dialog = new AlertDialog.Builder(mContext).setView(listView).setTitle("请选择").setNegativeButton("取消", new DialogInterface.OnClickListener() {
+			
+			@Override
+			public void onClick(DialogInterface dialog, int which) {
+				// TODO Auto-generated method stub
+				
+			}
+		}).create();
+		
+		return dialog;
+	}
+	
+	public Dialog getLanguageChoiceDialog(final Handler handler) {
+		final LanguageAdapter languageAdapter = LanguageAdapter.getInstance(mContext);
+		AlertDialog.Builder builder = new AlertDialog.Builder(mContext);    
+        builder.setTitle("选择语言");  
+        final DialogInterface.OnClickListener choiceListener =   
+            new DialogInterface.OnClickListener(){
+
+				@Override
+				public void onClick(DialogInterface dialog, int which) {
+					// TODO Auto-generated method stub
+					languageAdapter.setCurrentLanguage(which);
+				}};  
+        builder.setSingleChoiceItems(R.array.language, languageAdapter.getLanguage(), choiceListener);  
+          
+        DialogInterface.OnClickListener btnListener =   
+            new DialogInterface.OnClickListener() {  
+                @Override  
+                public void onClick(DialogInterface dialogInterface, int which) {  
+                	handler.sendEmptyMessage(MainActivity.MSG_UPDATE_LANGUAGE);
+                }  
+            };  
+        builder.setPositiveButton("确定", btnListener);  
+        return builder.create();  
+	}
+}

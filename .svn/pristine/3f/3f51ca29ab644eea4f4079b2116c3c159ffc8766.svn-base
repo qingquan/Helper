@@ -1,0 +1,146 @@
+package yl.demo.pathHelper.Adapter;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import yl.demo.pathHelper.R;
+import yl.demo.pathHelper.util.LanguageAdapter;
+import android.R.integer;
+import android.content.Context;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.BaseAdapter;
+import android.widget.ImageView;
+import android.widget.RelativeLayout;
+import android.widget.TextView;
+
+public class FacilitiesAdapter extends BaseAdapter {
+	private Context mContext;
+	private List<FacilityInfo> mFacilities;
+	
+	public FacilitiesAdapter(Context context) {
+		// TODO Auto-generated constructor stub
+		mContext = context;
+		LanguageAdapter languageAdapter = LanguageAdapter.getInstance(mContext);
+		String[] facilityNameStrings = mContext.getResources().getStringArray(languageAdapter.getIdWithLanguageAdaptation("array", "facility"));
+		mFacilities = new ArrayList<FacilityInfo>();
+		for ( int i = 0; i < facilityNameStrings.length; i++ )
+			mFacilities.add(new FacilityInfo(facilityNameStrings[i], i));
+	}
+
+	@Override
+	public int getCount() {
+		// TODO Auto-generated method stub
+		return mFacilities.size();
+	}
+
+	@Override
+	public Object getItem(int position) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public long getItemId(int position) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public View getView(int position, View convertView, ViewGroup parent) {
+		// TODO Auto-generated method stub
+		RelativeLayout relativeLayout = null;
+		if ( convertView == null )
+			relativeLayout = (RelativeLayout) LayoutInflater.from(mContext).inflate(R.layout.facility_cell, null);
+		else 
+			relativeLayout = (RelativeLayout) convertView;
+		
+		ImageView logo = (ImageView) relativeLayout.findViewById(R.id.facility_image);
+		logo.setImageResource(mFacilities.get(position).getResourcesId());
+		TextView name = (TextView) relativeLayout.findViewById(R.id.facility_text);
+		name.setText(mFacilities.get(position).mName);
+		ImageView click = (ImageView) relativeLayout.findViewById(R.id.facility_click);
+		if ( mFacilities.get(position).mIsClicked ) { 
+			relativeLayout.setBackgroundResource(R.drawable.facilities_chosen_bg);
+			click.setVisibility(View.VISIBLE);
+		}
+		else { 
+			relativeLayout.setBackgroundResource(R.drawable.facilities_bg);
+			click.setVisibility(View.INVISIBLE);
+		}
+		
+		return relativeLayout;
+	}
+	
+	public void setClicked(int position) {
+		if (position < 0 || position >= mFacilities.size())
+			return;
+		mFacilities.get(position).mIsClicked = mFacilities.get(position).mIsClicked == true ? false : true;
+	}
+	
+	public int[] getFacilityTypes() {
+		int[] facilityTypes = new int[mFacilities.size()];
+		for ( int i = 0; i < facilityTypes.length; i++ ) {
+			if ( mFacilities.get(i).mIsClicked )
+				facilityTypes[i] = 1;
+			else 
+				facilityTypes[i] = 0;
+		}
+		
+		return facilityTypes;
+	}
+	
+	public class FacilityInfo {
+		public String mName;
+		public int mType;
+		public boolean mIsClicked;
+		
+		 public FacilityInfo(String name, int type) {
+			// TODO Auto-generated constructor stub
+			 mName = name;
+			 mType = type;
+			 mIsClicked = false;
+		}
+		
+		public int getResourcesId(int type) {
+			int id = 0;
+			switch (type) {
+			case 0:
+				id = R.drawable.facilities_restaurant;
+				break;
+			case 1:
+				id = R.drawable.facilities_store;
+				break;
+			case 2:
+				id = R.drawable.facilities_toilet;
+				break;
+			case 3:
+				id = R.drawable.facilities_elevator;
+				break;
+			case 4:
+				id = R.drawable.facilities_guide;
+				break;
+			case 5:
+				id = R.drawable.facilities_guitai;
+				break;
+			case 6:
+				id = R.drawable.facilities_restroom;
+				break;
+			case 7:
+				id = R.drawable.facilities_child;
+				break;
+			default:
+				break;
+			}
+			
+			return id;
+		}
+		
+		public int getResourcesId() {
+			return getResourcesId(mType);
+		}
+	}
+	
+
+}

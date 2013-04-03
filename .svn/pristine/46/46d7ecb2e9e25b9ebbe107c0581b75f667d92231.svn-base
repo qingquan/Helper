@@ -1,0 +1,26 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#fff3f3f3" >
+    <RelativeLayout 
+        android:id="@+id/facility_bottom"
+        android:layout_width="fill_parent"
+        android:layout_height="60dip"
+        android:background="@drawable/show_it_bg"
+        android:layout_alignParentBottom="true">
+        <ImageView 
+            android:id="@+id/facility_show_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_alignParentRight="true"
+            android:layout_marginRight="10dip"
+            android:src="@drawable/show_it_button"/>
+    </RelativeLayout>
+    <ListView 
+        android:id="@+id/facility_listview"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/facility_bottom"/>
+</RelativeLayout>
