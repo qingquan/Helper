@@ -24,7 +24,7 @@
             android:name="yl.demo.pathHelper.LayerActivity"
             android:screenOrientation="portrait"/>
         <activity 
-            android:name="yl.demo.pathHelper.FlashActivity"
+            android:name="yl.demo.pathHelper.ParticleWiFi"
             android:screenOrientation="portrait"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
             <intent-filter>

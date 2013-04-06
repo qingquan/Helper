@@ -13,14 +13,27 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import lbs.wifiparticlefilter.data.Measure;
+import lbs.wifiparticlefilter.data.Particle;
+import lbs.wifiparticlefilter.data.Point;
+import lbs.wifiparticlefilter.dbmanagement.dbHandler;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.util.Log;
 import yl.demo.pathHelper.model.Location;
+import yl.demo.pathHelpler.filter.Filter;
+import yl.demo.pathHelper.data.Point;
+import yl.demo.pathHelper.data.Particle;
+import yl.demo.pathHelper.data.Measure;
 
 public class IndoorLocationAlgorithm {
 	private HashMap<Location, HashMap<String, Double>> mFingerPrintingHashMap;
 	private HashMap<String, Set<String>> mMacHashMap;
 	private String mPath;
 	private String mCurrentFileName = "";
-	
+	private Filter mFilter;
+	public final static int PARTICLES = 30;
 	
 	public IndoorLocationAlgorithm(String dataPath) {
 		// TODO Auto-generated constructor stub
@@ -30,7 +43,7 @@ public class IndoorLocationAlgorithm {
 	}
 	
 	/**
-	 * ´´½¨macºÍµØÍ¼µÄÓ³Éä±í¡£ÓÃÓÚÍ¨¹ýmacÈ·¶¨ÊôÓÚÄÄ¸öµØÍ¼
+	 * ï¿½ï¿½ï¿½ï¿½macï¿½Íµï¿½Í¼ï¿½ï¿½Ó³ï¿½ï¿½?ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½macÈ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¸ï¿½ï¿½ï¿½Í¼
 	 */
 	private void createMacHashMap() {
 		// TODO Auto-generated method stub
@@ -48,7 +61,7 @@ public class IndoorLocationAlgorithm {
 	}
 
 	/**
-	 * ½«ÎÄ¼þÖÐµÄmacÐÅÏ¢¼ÓÈëµ½MacHashMapÖÐ
+	 * ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ðµï¿½macï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ëµ½MacHashMapï¿½ï¿½
 	 * @param file
 	 */
 	private void addMacToMacHashMap(File file) {
@@ -82,7 +95,61 @@ public class IndoorLocationAlgorithm {
 	}
 
 	/**
-	 * ½«ÌØ¶¨µØÍ¼µÄFingerprintingÊý¾Ý¼ÓÔØµ½ÄÚ´æ
+	 * @param fileName: file storing the fingerprint data
+	 * @return: the whole particle map of fingerprinting data
+	 */
+	//construct the who map of <location, <RSSI value>>
+	//for calls of getting <RSSI value> by <location>
+	public List<Particle> constructFilterList(String fileName)
+	{
+		mFingerPrintingHashMap.clear();
+		
+		List<Particle> list = new ArrayList<Particle>();
+		
+		File file = new File(mPath + fileName);//get the ref_data name
+		String line = null;
+		
+		try {
+			BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
+			line = bufferedReader.readLine();
+			
+			while ( ( line = bufferedReader.readLine() ) != null ) {
+				String[] sections = line.split(" ");
+				int middle = sections[0].indexOf(",");
+				
+				float x = Float.parseFloat(sections[0].substring(0,middle));
+				float y = Float.parseFloat(sections[0].substring(middle+1));
+				
+				Point point = new Point(x, y);
+				ArrayList<Measure> measureList = new ArrayList<Measure>();
+
+				for ( int i = 1; i < sections.length; i++ ) {
+					int mark = sections[i].indexOf(":");
+					String mac = sections[i].substring(0, mark);
+					double rss = Double.parseDouble(sections[i].substring(mark+1));
+					
+					rss = Math.pow(10, rss/10);
+					measureList.add(new Measure(mac, rss));
+				}
+				//the measurelist may dupliate
+			    list.add(new Particle(point, measureList));
+			}
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		return list;
+	}
+	
+	
+	
+	
+	/**
+	 * ï¿½ï¿½ï¿½Ø¶ï¿½ï¿½ï¿½Í¼ï¿½ï¿½Fingerprintingï¿½ï¿½Ý¼ï¿½ï¿½Øµï¿½ï¿½Ú´ï¿½
 	 * @param fileName
 	 */
 	public void loadFingerPrintingData(String fileName) {
@@ -124,11 +191,11 @@ public class IndoorLocationAlgorithm {
 	}
 	
 	/**
-	 * Í¨¹ýrssVec½øÐÐ¶¨Î»£¬·µ»ØÂ¥²ãÐÅÏ¢ºÍÏêÏ¸Î»ÖÃµÄLocation
-	 * @param rssVec ÆäÖÐµÄÐÅºÅÇ¿¶ÈÎªpower£¬¶ø·Çdbm
+	 * Í¨ï¿½ï¿½rssVecï¿½ï¿½ï¿½Ð¶ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¥ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½Ï¸Î»ï¿½Ãµï¿½Location
+	 * @param rssVec ï¿½ï¿½ï¿½Ðµï¿½ï¿½Åºï¿½Ç¿ï¿½ï¿½Îªpowerï¿½ï¿½ï¿½ï¿½ï¿½dbm
 	 * @return
 	 */
-	public Location predictLocation(HashMap<String, Double> rssVec) {
+	public Location predictLocation(HashMap<String, Double> rssVec) {		
 		String fileName = predictFingerPrintingFile(rssVec);
 		if ( !fileName.equals(mCurrentFileName) ) {
 			mCurrentFileName = fileName;
@@ -146,7 +213,18 @@ public class IndoorLocationAlgorithm {
 		
 		Collections.sort(locations);
 		
-		return finalSelection(locations.subList(locations.size()-10, locations.size()));
+		//add particle filters into this algorithm
+		//get initial location
+		Location finalLocation = finalSelection(locations.subList(locations.size()-10, locations.size()));
+		
+		//init filter
+		filter = new Filter(PARTICLES, dbHandler.getData());
+		filter.initFilter();
+		//the mFingerPrinting Hash map equals the data from db
+		if(!initialParticle){
+			mFilter = new Filter(PARTICLES, mFingerPrintingHashMap);
+		}
+		return ;
 	}
 	
 	private Location finalSelection(List<EstimatedLocation> subList) {
@@ -204,7 +282,7 @@ public class IndoorLocationAlgorithm {
 	}
 
 	/**
-	 * ³õ²½ÅÐ¶ÏÊôÓÚÄÄÕÅµØÍ¼£¬È»ºó·µ»ØµØÍ¼ËùÊôµÄFingerprintingÎÄ¼þÃû
+	 * ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½Í¼ï¿½ï¿½È»ï¿½ó·µ»Øµï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Fingerprintingï¿½Ä¼ï¿½ï¿½ï¿½
 	 * @param rssVec
 	 * @return
 	 */
